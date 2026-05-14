@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.10)
 project(libIME2)
 
 enable_testing()
@@ -13,6 +13,6 @@ set(CMAKE_CXX_STANDARD 14)
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
 # This requires newer C++ compilers and does not work with VC++ 2015.
-add_subdirectory(lib/googletest-release-1.10.0)
+add_subdirectory(lib/googletest-1.17.0)
 add_subdirectory(src)
 add_subdirectory(test)
