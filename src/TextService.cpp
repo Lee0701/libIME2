@@ -894,17 +894,15 @@ bool TextService::compositionRect(EditSession* session, RECT* rect) const {
 
 bool TextService::selectionRect(EditSession* session, RECT* rect) const {
     bool ret = false;
-    if(isComposing()) {
-        ComPtr<ITfContextView> view;
-        if(session->context()->GetActiveView(&view) == S_OK) {
-            BOOL clipped;
-            TF_SELECTION selection;
-            ULONG selectionNum;
-            if(session->context()->GetSelection(session->editCookie(), TF_DEFAULT_SELECTION, 1, &selection, &selectionNum) == S_OK ) {
-                if(view->GetTextExt(session->editCookie(), selection.range, rect, &clipped) == S_OK)
-                    ret = true;
-                selection.range->Release();
-            }
+    ComPtr<ITfContextView> view;
+    if(session->context()->GetActiveView(&view) == S_OK) {
+        BOOL clipped;
+        TF_SELECTION selection;
+        ULONG selectionNum;
+        if(session->context()->GetSelection(session->editCookie(), TF_DEFAULT_SELECTION, 1, &selection, &selectionNum) == S_OK ) {
+            if(view->GetTextExt(session->editCookie(), selection.range, rect, &clipped) == S_OK)
+                ret = true;
+            selection.range->Release();
         }
     }
     return ret;
