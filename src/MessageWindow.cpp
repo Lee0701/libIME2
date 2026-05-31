@@ -26,7 +26,7 @@ namespace Ime {
 MessageWindow::MessageWindow(TextService* service, EditSession* session):
     ImeWindow(service) {
 
-    HWND parent = service->compositionWindow(session);
+    HWND parent = service->compositionWindow(session->context());
     create(parent, WS_POPUP|WS_CLIPCHILDREN, WS_EX_TOOLWINDOW|WS_EX_TOPMOST);
 }
 

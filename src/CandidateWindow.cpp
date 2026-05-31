@@ -32,7 +32,7 @@ using namespace std;
 
 namespace Ime {
 
-CandidateWindow::CandidateWindow(TextService* service, EditSession* session):
+CandidateWindow::CandidateWindow(TextService* service, ITfContext* context):
     ImeWindow(service),
     shown_(false),
     candPerRow_(1),
@@ -54,7 +54,7 @@ CandidateWindow::CandidateWindow(TextService* service, EditSession* session):
         colSpacing_ = 8;
     }
 
-    HWND parent = service->compositionWindow(session);
+    HWND parent = service->compositionWindow(context);
     create(parent, WS_POPUP|WS_CLIPCHILDREN, WS_EX_TOOLWINDOW|WS_EX_TOPMOST);
 }
 

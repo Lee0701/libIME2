@@ -143,27 +143,34 @@ void TextService::setKeyboardOpen(bool open) {
 
 // check if current insertion point is in the range of composition.
 // if not in range, insertion is now allowed
-bool TextService::isInsertionAllowed(EditSession* session) const {
-    TfEditCookie cookie = session->editCookie();
-    ULONG selectionNum;
-    if(isComposing()) {
-        TF_SELECTION selection;
-        if(session->context()->GetSelection(cookie, TF_DEFAULT_SELECTION, 1, &selection, &selectionNum) == S_OK) {
-            ComPtr<ITfRange> compositionRange;
-            if(composition_->GetRange(&compositionRange) == S_OK) {
-                bool allowed = false;
-                // check if current selection is covered by composition range
-                LONG compareResult1;
-                LONG compareResult2;
-                if(selection.range->CompareStart(cookie, compositionRange, TF_ANCHOR_START, &compareResult1) == S_OK
-                    && selection.range->CompareStart(cookie, compositionRange, TF_ANCHOR_END, &compareResult2) == S_OK) {
-                    if(compareResult1 == -1 && compareResult2 == +1)
-                        allowed = true;
+bool TextService::isInsertionAllowed(ITfContext* context) const {
+    assert(context);
+    HRESULT sessionResult;
+    auto editSession = ComPtr<EditSession>::make(
+        context,
+        [&](EditSession* session, TfEditCookie cookie) {
+            ULONG selectionNum;
+            if(isComposing()) {
+                TF_SELECTION selection;
+                if(context->GetSelection(cookie, TF_DEFAULT_SELECTION, 1, &selection, &selectionNum) == S_OK) {
+                    ComPtr<ITfRange> compositionRange;
+                    if(composition_->GetRange(&compositionRange) == S_OK) {
+                        bool allowed = false;
+                        // check if current selection is covered by composition range
+                        LONG compareResult1;
+                        LONG compareResult2;
+                        if(selection.range->CompareStart(cookie, compositionRange, TF_ANCHOR_START, &compareResult1) == S_OK
+                            && selection.range->CompareStart(cookie, compositionRange, TF_ANCHOR_END, &compareResult2) == S_OK) {
+                            if(compareResult1 == -1 && compareResult2 == +1)
+                                allowed = true;
+                        }
+                    }
+                    selection.range->Release();
                 }
             }
-            selection.range->Release();
         }
-    }
+    );
+    context->RequestEditSession(clientId_, editSession, TF_ES_SYNC|TF_ES_READWRITE, &sessionResult);
     return false;
 }
 
@@ -172,7 +179,7 @@ void TextService::startComposition(ITfContext* context) {
     HRESULT sessionResult;
     auto editSession = ComPtr<EditSession>::make(
         context,
-        [=](EditSession* session, TfEditCookie cookie) {
+        [&](EditSession* session, TfEditCookie cookie) {
             if (auto contextComposition = ComPtr<ITfContextComposition>::queryFrom(context)) {
                 // get current insertion point in the current context
                 ComPtr<ITfRange> range;
@@ -204,7 +211,7 @@ void TextService::endComposition(ITfContext* context) {
     HRESULT sessionResult;
     auto editSession = ComPtr<EditSession>::make(
         context,
-        [=](EditSession* session, TfEditCookie cookie) {
+        [&](EditSession* session, TfEditCookie cookie) {
             if (composition_) {
                 // move current insertion point to end of the composition string
                 ComPtr<ITfRange> compositionRange;
@@ -235,85 +242,104 @@ void TextService::endComposition(ITfContext* context) {
     context->RequestEditSession(clientId_, editSession, TF_ES_SYNC|TF_ES_READWRITE, &sessionResult);
 }
 
-std::wstring TextService::compositionString(EditSession* session) const {
+std::wstring TextService::compositionString(ITfContext* context) const {
     std::wstring result;
-    if (composition_) {
-        ComPtr<ITfRange> compositionRange;
-        if (composition_->GetRange(&compositionRange) == S_OK) {
-            auto rangeAcp = compositionRange.query<ITfRangeACP>();
-            if (rangeAcp) {
-                LONG anchor, bufLen;
-                rangeAcp->GetExtent(&anchor, &bufLen);  // get length of the text.
-                auto buf = std::make_unique<wchar_t[]>(size_t(bufLen) + 1);
+    assert(context);
+    HRESULT sessionResult;
+    auto editSession = ComPtr<EditSession>::make(
+        context,
+        [&](EditSession* session, TfEditCookie cookie) {
+            if (composition_) {
+                ComPtr<ITfRange> compositionRange;
+                if (composition_->GetRange(&compositionRange) == S_OK) {
+                    auto rangeAcp = compositionRange.query<ITfRangeACP>();
+                    if (rangeAcp) {
+                        LONG anchor, bufLen;
+                        rangeAcp->GetExtent(&anchor, &bufLen);  // get length of the text.
+                        auto buf = std::make_unique<wchar_t[]>(size_t(bufLen) + 1);
 
-                ULONG textLen = 0;
-                if (compositionRange->GetText(session->editCookie(), 0, buf.get(), bufLen, &textLen) == S_OK) {
-                    buf[textLen] = '\0';
-                    result = buf.get();
+                        ULONG textLen = 0;
+                        if (compositionRange->GetText(session->editCookie(), 0, buf.get(), bufLen, &textLen) == S_OK) {
+                            buf[textLen] = '\0';
+                            result = buf.get();
+                        }
+                    }
                 }
             }
         }
-    }
+    );
+    context->RequestEditSession(clientId_, editSession, TF_ES_SYNC|TF_ES_READWRITE, &sessionResult);
     return result;
 }
 
-void TextService::setCompositionString(EditSession* session, const wchar_t* str, int len) const {
-    ITfContext* context = session->context();
-    if(context) {
-        TfEditCookie editCookie = session->editCookie();
-        TF_SELECTION selection;
-        ULONG selectionNum;
-        // get current selection/insertion point
-        if(context->GetSelection(editCookie, TF_DEFAULT_SELECTION, 1, &selection, &selectionNum) == S_OK) {
-            ComPtr<ITfRange> compositionRange;
-            if(composition_->GetRange(&compositionRange) == S_OK) {
-                bool selPosInComposition = true;
-                // if current insertion point is not covered by composition, we cannot insert text here.
-                if(selPosInComposition) {
-                    // replace context of composion area with the new string.
-                    compositionRange->SetText(editCookie, TF_ST_CORRECTION, str, len);
+void TextService::setCompositionString(ITfContext* context, const wchar_t* str, int len) const {
+    assert(context);
+    HRESULT sessionResult;
+    auto editSession = ComPtr<EditSession>::make(
+        context,
+        [&](EditSession* session, TfEditCookie cookie) {
+            TF_SELECTION selection;
+            ULONG selectionNum;
+            // get current selection/insertion point
+            if(context->GetSelection(cookie, TF_DEFAULT_SELECTION, 1, &selection, &selectionNum) == S_OK) {
+                ComPtr<ITfRange> compositionRange;
+                if(composition_->GetRange(&compositionRange) == S_OK) {
+                    bool selPosInComposition = true;
+                    // if current insertion point is not covered by composition, we cannot insert text here.
+                    if(selPosInComposition) {
+                        // replace context of composion area with the new string.
+                        compositionRange->SetText(cookie, TF_ST_CORRECTION, str, len);
 
-                    // move the insertion point to end of the composition string
-                    selection.range->Collapse(editCookie, TF_ANCHOR_END);
-                    context->SetSelection(editCookie, 1, &selection);
-                }
+                        // move the insertion point to end of the composition string
+                        selection.range->Collapse(cookie, TF_ANCHOR_END);
+                        context->SetSelection(cookie, 1, &selection);
+                    }
 
-                // set display attribute to the composition range
-                ComPtr<ITfProperty> dispAttrProp;
-                if(context->GetProperty(GUID_PROP_ATTRIBUTE, &dispAttrProp) == S_OK) {
-                    VARIANT val;
-                    val.vt = VT_I4;
-                    val.lVal = module_->inputAttrib()->atom();
-                    dispAttrProp->SetValue(editCookie, compositionRange, &val);
+                    // set display attribute to the composition range
+                    ComPtr<ITfProperty> dispAttrProp;
+                    if(context->GetProperty(GUID_PROP_ATTRIBUTE, &dispAttrProp) == S_OK) {
+                        VARIANT val;
+                        val.vt = VT_I4;
+                        val.lVal = module_->inputAttrib()->atom();
+                        dispAttrProp->SetValue(cookie, compositionRange, &val);
+                    }
                 }
+                selection.range->Release();
             }
-            selection.range->Release();
         }
-    }
+    );
+    context->RequestEditSession(clientId_, editSession, TF_ES_SYNC|TF_ES_READWRITE, &sessionResult);
 }
 
 // set cursor position in the composition area
 // 0 means the start pos of composition string
-void TextService::setCompositionCursor(EditSession* session, int pos) const {
-    TF_SELECTION selection;
-    ULONG selectionNum;
-    // get current selection
-    if(session->context()->GetSelection(session->editCookie(), TF_DEFAULT_SELECTION, 1, &selection, &selectionNum) == S_OK) {
-        // get composition range
-        ComPtr<ITfRange> compositionRange;
-        if(composition_->GetRange(&compositionRange) == S_OK) {
-            // make the start of selectionRange the same as that of compositionRange
-            selection.range->ShiftStartToRange(session->editCookie(), compositionRange, TF_ANCHOR_START);
-            selection.range->Collapse(session->editCookie(), TF_ANCHOR_START);
-            LONG moved;
-            // move the start anchor to right
-            selection.range->ShiftStart(session->editCookie(), (LONG)pos, &moved, NULL);
-            selection.range->Collapse(session->editCookie(), TF_ANCHOR_START);
-            // set the new selection to the context
-            session->context()->SetSelection(session->editCookie(), 1, &selection);
+void TextService::setCompositionCursor(ITfContext* context, int pos) const {
+    HRESULT sessionResult;
+    auto editSession = ComPtr<EditSession>::make(
+        context,
+        [&](EditSession* session, TfEditCookie cookie) {
+            TF_SELECTION selection;
+            ULONG selectionNum;
+            // get current selection
+            if(context->GetSelection(cookie, TF_DEFAULT_SELECTION, 1, &selection, &selectionNum) == S_OK) {
+                // get composition range
+                ComPtr<ITfRange> compositionRange;
+                if(composition_->GetRange(&compositionRange) == S_OK) {
+                    // make the start of selectionRange the same as that of compositionRange
+                    selection.range->ShiftStartToRange(cookie, compositionRange, TF_ANCHOR_START);
+                    selection.range->Collapse(cookie, TF_ANCHOR_START);
+                    LONG moved;
+                    // move the start anchor to right
+                    selection.range->ShiftStart(cookie, (LONG)pos, &moved, NULL);
+                    selection.range->Collapse(cookie, TF_ANCHOR_START);
+                    // set the new selection to the context
+                    context->SetSelection(cookie, 1, &selection);
+                }
+                selection.range->Release();
+            }
         }
-        selection.range->Release();
-    }
+    );
+    context->RequestEditSession(clientId_, editSession, TF_ES_SYNC|TF_ES_READWRITE, &sessionResult);
 }
 
 // compartment handling
@@ -432,7 +458,7 @@ bool TextService::filterKeyDown(KeyEvent& keyEvent) {
 }
 
 // virtual
-bool TextService::onKeyDown(KeyEvent& keyEvent, EditSession* session) {
+bool TextService::onKeyDown(KeyEvent& keyEvent, ITfContext* context) {
     return false;
 }
 
@@ -442,7 +468,7 @@ bool TextService::filterKeyUp(KeyEvent& keyEvent) {
 }
 
 // virtual
-bool TextService::onKeyUp(KeyEvent& keyEvent, EditSession* session) {
+bool TextService::onKeyUp(KeyEvent& keyEvent, ITfContext* context) {
     return false;
 }
 
@@ -735,21 +761,7 @@ STDMETHODIMP TextService::OnKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM 
         KeyEvent keyEvent(WM_KEYDOWN, wParam, lParam);
         *pfEaten = (BOOL)filterKeyDown(keyEvent);
         if(*pfEaten) { // we want to eat the key
-            HRESULT sessionResult;
-            // ask TSF for an edit session. If editing is approved by TSF,
-            // KeyEditSession::DoEditSession will be called, which in turns
-            // call back to TextService::doKeyEditSession().
-            // So the real key handling is relayed to TextService::doKeyEditSession().
-            auto session = ComPtr<EditSession>::make(
-                pContext,
-                [&](EditSession* session, TfEditCookie cookie) {
-                    *pfEaten = onKeyDown(keyEvent, session);
-                }
-            );
-            // We use TF_ES_SYNC here, so the request becomes synchronus and blocking.
-            // KeyEditSession::DoEditSession() and TextService::doKeyEditSession() will be
-            // called before RequestEditSession() returns.
-            pContext->RequestEditSession(clientId_, session, TF_ES_SYNC|TF_ES_READWRITE, &sessionResult);
+            *pfEaten = onKeyDown(keyEvent, pContext);
         }
     }
     return S_OK;
@@ -776,14 +788,7 @@ STDMETHODIMP TextService::OnKeyUp(ITfContext *pContext, WPARAM wParam, LPARAM lP
         KeyEvent keyEvent(WM_KEYUP, wParam, lParam);
         *pfEaten = (BOOL)filterKeyUp(keyEvent);
         if(*pfEaten) {
-            HRESULT sessionResult;
-            auto session = ComPtr<EditSession>::make(
-                pContext,
-                [&](EditSession* session, TfEditCookie cookie) {
-                    *pfEaten = onKeyUp(keyEvent, session);
-                }
-            );
-            pContext->RequestEditSession(clientId_, session, TF_ES_SYNC|TF_ES_READWRITE, &sessionResult);
+            *pfEaten = onKeyUp(keyEvent, pContext);
         }
     }
     return S_OK;
@@ -876,47 +881,71 @@ ComPtr<ITfContext> TextService::currentContext() const {
     return context;
 }
 
-bool TextService::compositionRect(EditSession* session, RECT* rect) const {
+bool TextService::compositionRect(ITfContext* context, RECT* rect) const {
     bool ret = false;
-    if(isComposing()) {
-        ComPtr<ITfContextView> view;
-        if(session->context()->GetActiveView(&view) == S_OK) {
-            BOOL clipped;
-            ComPtr<ITfRange> range;
-            if(composition_->GetRange(&range) == S_OK) {
-                if(view->GetTextExt(session->editCookie(), range, rect, &clipped) == S_OK)
-                    ret = true;
+    assert(context);
+    HRESULT sessionResult;
+    auto editSession = ComPtr<EditSession>::make(
+        context,
+        [&](EditSession* session, TfEditCookie cookie) {
+            if(isComposing()) {
+                ComPtr<ITfContextView> view;
+                if(context->GetActiveView(&view) == S_OK) {
+                    BOOL clipped;
+                    ComPtr<ITfRange> range;
+                    if(composition_->GetRange(&range) == S_OK) {
+                        if(view->GetTextExt(session->editCookie(), range, rect, &clipped) == S_OK)
+                            ret = true;
+                    }
+                }
             }
         }
-    }
+    );
+    context->RequestEditSession(clientId_, editSession, TF_ES_SYNC|TF_ES_READWRITE, &sessionResult);
     return ret;
 }
 
-bool TextService::selectionRect(EditSession* session, RECT* rect) const {
+bool TextService::selectionRect(ITfContext* context, RECT* rect) const {
     bool ret = false;
-    ComPtr<ITfContextView> view;
-    if(session->context()->GetActiveView(&view) == S_OK) {
-        BOOL clipped;
-        TF_SELECTION selection;
-        ULONG selectionNum;
-        if(session->context()->GetSelection(session->editCookie(), TF_DEFAULT_SELECTION, 1, &selection, &selectionNum) == S_OK ) {
-            if(view->GetTextExt(session->editCookie(), selection.range, rect, &clipped) == S_OK)
-                ret = true;
-            selection.range->Release();
+    assert(context);
+    HRESULT sessionResult;
+    auto editSession = ComPtr<EditSession>::make(
+        context,
+        [&](EditSession* session, TfEditCookie cookie) {
+            ComPtr<ITfContextView> view;
+            if(context->GetActiveView(&view) == S_OK) {
+                BOOL clipped;
+                TF_SELECTION selection;
+                ULONG selectionNum;
+                if(context->GetSelection(session->editCookie(), TF_DEFAULT_SELECTION, 1, &selection, &selectionNum) == S_OK ) {
+                    if(view->GetTextExt(session->editCookie(), selection.range, rect, &clipped) == S_OK)
+                        ret = true;
+                    selection.range->Release();
+                }
+            }
         }
-    }
+    );
+    context->RequestEditSession(clientId_, editSession, TF_ES_SYNC|TF_ES_READWRITE, &sessionResult);
     return ret;
 }
 
-HWND TextService::compositionWindow(EditSession* session) const {
+HWND TextService::compositionWindow(ITfContext* context) const {
     HWND hwnd = NULL;
-    ComPtr<ITfContextView> view;
-    if(session->context()->GetActiveView(&view) == S_OK) {
-        // get current composition window
-        view->GetWnd(&hwnd);
-    }
-    if (hwnd == NULL)
-        hwnd = ::GetFocus();
+    assert(context);
+    HRESULT sessionResult;
+    auto editSession = ComPtr<EditSession>::make(
+        context,
+        [&](EditSession* session, TfEditCookie cookie) {
+            ComPtr<ITfContextView> view;
+            if(context->GetActiveView(&view) == S_OK) {
+                // get current composition window
+                view->GetWnd(&hwnd);
+            }
+            if (hwnd == NULL)
+                hwnd = ::GetFocus();
+        }
+    );
+    context->RequestEditSession(clientId_, editSession, TF_ES_SYNC|TF_ES_READWRITE, &sessionResult);
     return hwnd;
 }
 

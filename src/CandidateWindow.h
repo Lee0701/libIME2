@@ -36,7 +36,7 @@ class CandidateWindow:
     public ImeWindow,
     public ComObject<ComInterface<ITfCandidateListUIElement>> {
 public:
-    CandidateWindow(TextService* service, EditSession* session);
+    CandidateWindow(TextService* service, ITfContext* context);
 
     // ITfUIElement
     STDMETHODIMP GetDescription(BSTR *pbstrDescription);

@@ -132,16 +132,16 @@ public:
     bool isKeyboardOpened() const;
     void setKeyboardOpen(bool open);
 
-    bool isInsertionAllowed(EditSession* session) const;
+    bool isInsertionAllowed(ITfContext* context) const;
     void startComposition(ITfContext* context);
     void endComposition(ITfContext* context);
-    bool compositionRect(EditSession* session, RECT* rect) const;
-    bool selectionRect(EditSession* session, RECT* rect) const;
-    HWND compositionWindow(EditSession* session) const;
+    bool compositionRect(ITfContext* context, RECT* rect) const;
+    bool selectionRect(ITfContext* context, RECT* rect) const;
+    HWND compositionWindow(ITfContext* context) const;
 
-    std::wstring compositionString(EditSession* session) const;
-    void setCompositionString(EditSession* session, const wchar_t* str, int len) const;
-    void setCompositionCursor(EditSession* session, int pos) const;
+    std::wstring compositionString(ITfContext* context) const;
+    void setCompositionString(ITfContext* context, const wchar_t* str, int len) const;
+    void setCompositionCursor(ITfContext* context, int pos) const;
 
     // compartment handling
     ComPtr<ITfCompartment> globalCompartment(const GUID& key) const;
@@ -168,10 +168,10 @@ public:
     virtual void onKillFocus();
 
     virtual bool filterKeyDown(KeyEvent& keyEvent);
-    virtual bool onKeyDown(KeyEvent& keyEvent, EditSession* session);
+    virtual bool onKeyDown(KeyEvent& keyEvent, ITfContext* context);
     
     virtual bool filterKeyUp(KeyEvent& keyEvent);
-    virtual bool onKeyUp(KeyEvent& keyEvent, EditSession* session);
+    virtual bool onKeyUp(KeyEvent& keyEvent, ITfContext* context);
 
     virtual bool onPreservedKey(const GUID& guid);
 
