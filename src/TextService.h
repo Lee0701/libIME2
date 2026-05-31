@@ -132,16 +132,17 @@ public:
     bool isKeyboardOpened() const;
     void setKeyboardOpen(bool open);
 
-    bool isInsertionAllowed(ITfContext* context) const;
-    void startComposition(ITfContext* context);
+    bool isInsertionAllowed(ITfContext* context);
+    void appendText(ITfContext *context, const wchar_t* str, int len);
+    void startComposition(ITfContext* context, const wchar_t* str, int len);
     void endComposition(ITfContext* context);
-    bool compositionRect(ITfContext* context, RECT* rect) const;
-    bool selectionRect(ITfContext* context, RECT* rect) const;
-    HWND compositionWindow(ITfContext* context) const;
+    bool compositionRect(ITfContext* context, RECT* rect);
+    bool selectionRect(ITfContext* context, RECT* rect);
+    HWND compositionWindow(ITfContext* context);
 
-    std::wstring compositionString(ITfContext* context) const;
-    void setCompositionString(ITfContext* context, const wchar_t* str, int len) const;
-    void setCompositionCursor(ITfContext* context, int pos) const;
+    std::wstring compositionString(ITfContext* context);
+    void setCompositionString(ITfContext* context, const wchar_t* str, int len);
+    void setCompositionCursor(ITfContext* context, int pos);
 
     // compartment handling
     ComPtr<ITfCompartment> globalCompartment(const GUID& key) const;
